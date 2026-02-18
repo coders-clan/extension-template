@@ -1,6 +1,7 @@
 export interface CapturedRecording {
   url: string;
   label: string;
+  resolution: string;
   timestamp: number;
 }
 
@@ -29,11 +30,29 @@ function extractLabel(url: string): string {
   try {
     const parsed = new URL(url);
     const filename = parsed.pathname.split('/').pop() || '';
-    if (filename.toLowerCase().includes('screen')) return 'shared_screen';
-    if (filename.toLowerCase().includes('speaker')) return 'speaker_view';
+    const lower = filename.toLowerCase();
+
+    // Zoom uses _as_ for shared screen (Application Share), _avo_ for camera (Active Video Output)
+    if (lower.includes('_as_')) return 'screen_recording';
+    if (lower.includes('_avo_')) return 'camera';
+    if (lower.includes('screen')) return 'screen_recording';
+    if (lower.includes('speaker')) return 'camera';
+
+    // Try to extract resolution for extra context
     return 'recording';
   } catch {
     return 'recording';
+  }
+}
+
+function extractResolution(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const filename = parsed.pathname.split('/').pop() || '';
+    const match = filename.match(/(\d{3,4})x(\d{3,4})/);
+    return match ? `${match[1]}x${match[2]}` : '';
+  } catch {
+    return '';
   }
 }
 
@@ -174,6 +193,7 @@ export default defineBackground(() => {
       const recording: CapturedRecording = {
         url: details.url,
         label: extractLabel(details.url),
+        resolution: extractResolution(details.url),
         timestamp: Date.now(),
       };
 
@@ -250,12 +270,68 @@ export default defineBackground(() => {
             });
           }
           pendingDownloads.delete(requestId);
-          removeRefererRule().catch(() => {});
+          removeRefererRule().catch(() => { });
         }
       })();
 
+      sendResponse({ ok: true, requestId });
+      return true;
+    }
+
+    // Content script requests pause/resume/cancel
+    if (message.type === 'PAUSE_DOWNLOAD' || message.type === 'RESUME_DOWNLOAD' || message.type === 'CANCEL_DOWNLOAD') {
+      const { requestId } = message.payload;
+      (async () => {
+        try {
+          await ensureOffscreen();
+          await sendToOffscreen({ type: message.type, payload: { requestId } });
+        } catch (err) {
+          console.error(`[Zoom DL] Failed to send ${message.type}:`, err);
+        }
+      })();
       sendResponse({ ok: true });
       return true;
+    }
+
+    // Offscreen reports download paused
+    if (message.type === 'DOWNLOAD_PAUSED') {
+      const { requestId } = message.payload;
+      const pending = pendingDownloads.get(requestId);
+      if (pending) {
+        chrome.tabs.sendMessage(pending.tabId, {
+          type: 'DOWNLOAD_STATUS',
+          status: 'paused',
+        });
+      }
+      return false;
+    }
+
+    // Offscreen reports download resumed
+    if (message.type === 'DOWNLOAD_RESUMED') {
+      const { requestId } = message.payload;
+      const pending = pendingDownloads.get(requestId);
+      if (pending) {
+        chrome.tabs.sendMessage(pending.tabId, {
+          type: 'DOWNLOAD_STATUS',
+          status: 'resumed',
+        });
+      }
+      return false;
+    }
+
+    // Offscreen reports download cancelled
+    if (message.type === 'DOWNLOAD_CANCELLED') {
+      const { requestId } = message.payload;
+      const pending = pendingDownloads.get(requestId);
+      removeRefererRule().catch(() => { });
+      if (pending) {
+        chrome.tabs.sendMessage(pending.tabId, {
+          type: 'DOWNLOAD_STATUS',
+          status: 'cancelled',
+        });
+        pendingDownloads.delete(requestId);
+      }
+      return false;
     }
 
     // Offscreen reports fetch progress
@@ -278,7 +354,7 @@ export default defineBackground(() => {
       const pending = pendingDownloads.get(requestId);
       if (!pending) return false;
 
-      removeRefererRule().catch(() => {});
+      removeRefererRule().catch(() => { });
 
       console.log(
         `[Zoom DL] Blob ready (${(size / (1024 * 1024)).toFixed(1)} MB), downloading as: ${pending.filename}`
@@ -315,7 +391,7 @@ export default defineBackground(() => {
     if (message.type === 'FETCH_ERROR') {
       const { requestId, error } = message.payload;
       const pending = pendingDownloads.get(requestId);
-      removeRefererRule().catch(() => {});
+      removeRefererRule().catch(() => { });
       if (pending) {
         console.error('[Zoom DL] Offscreen fetch error:', error);
         chrome.tabs.sendMessage(pending.tabId, {
