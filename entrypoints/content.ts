@@ -200,7 +200,7 @@ function injectUI() {
         flex-shrink: 0;
       }
       .zdl-rec-icon.screen { background: #e8f4fd; color: #1976d2; }
-      .zdl-rec-icon.camera { background: #fce8ec; color: #c62828; }
+      .zdl-rec-icon.speaker { background: #fce8ec; color: #c62828; }
       .zdl-rec-icon.generic { background: #f0e8f8; color: #7b1fa2; }
       .zdl-rec-info { flex: 1; min-width: 0; }
       .zdl-rec-title {
@@ -538,11 +538,11 @@ function getRecordingDisplay(r: CapturedRecording, index: number): { title: stri
       iconSvg: SVG_SCREEN,
     };
   }
-  if (r.label === 'camera') {
+  if (r.label === 'speaker') {
     return {
-      title: 'Camera Recording',
+      title: 'Speaker Recording',
       meta: res ? `Active speaker \u00B7 ${res}` : 'Active speaker view',
-      iconClass: 'camera',
+      iconClass: 'speaker',
       iconSvg: SVG_CAMERA,
     };
   }

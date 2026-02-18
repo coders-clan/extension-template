@@ -32,11 +32,11 @@ function extractLabel(url: string): string {
     const filename = parsed.pathname.split('/').pop() || '';
     const lower = filename.toLowerCase();
 
-    // Zoom uses _as_ for shared screen (Application Share), _avo_ for camera (Active Video Output)
+    // Zoom uses _as_ for shared screen (Application Share), _avo_ for speaker (Active Video Output)
     if (lower.includes('_as_')) return 'screen_recording';
-    if (lower.includes('_avo_')) return 'camera';
+    if (lower.includes('_avo_')) return 'speaker';
     if (lower.includes('screen')) return 'screen_recording';
-    if (lower.includes('speaker')) return 'camera';
+    if (lower.includes('speaker')) return 'speaker';
 
     // Try to extract resolution for extra context
     return 'recording';
