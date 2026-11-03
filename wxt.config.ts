@@ -7,6 +7,12 @@ export default defineConfig({
     name: 'Coders Clan - Zoom Recording Downloader',
     description: 'Download Zoom cloud recordings from shared links',
     permissions: ['webRequest', 'activeTab', 'offscreen', 'downloads', 'declarativeNetRequest'],
-    host_permissions: ['*://*.zoom.us/*', '*://ssrweb.zoom.us/*'],
+    host_permissions: [
+      '*://*.zoom.us/*',
+      '*://ssrweb.zoom.us/*',
+      '*://*.techspert.co.il/*',
+      '*://iframe.mediadelivery.net/*',
+      '*://*.b-cdn.net/*',
+    ],
   },
 });

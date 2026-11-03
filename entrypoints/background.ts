@@ -26,6 +26,75 @@ function isZoomMp4Url(url: string): boolean {
   }
 }
 
+const BUNNY_MASTER_PLAYLIST = /^\/([0-9a-f-]{36})\/playlist\.m3u8$/i;
+
+function getBunnyBase(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.endsWith('.b-cdn.net')) return null;
+    const match = parsed.pathname.match(BUNNY_MASTER_PLAYLIST);
+    return match ? `${parsed.origin}/${match[1]}/` : null;
+  } catch {
+    return null;
+  }
+}
+
+function isSupportedPageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname.endsWith('.zoom.us') ||
+      parsed.hostname === 'techspert.co.il' ||
+      parsed.hostname.endsWith('.techspert.co.il')
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function fetchBunnyRecordings(base: string): Promise<CapturedRecording[]> {
+  const playlist = await fetch(`${base}playlist.m3u8`).then((r) => r.text());
+  const heights = [...playlist.matchAll(/RESOLUTION=\d+x(\d+)/g)]
+    .map((m) => parseInt(m[1]))
+    .sort((a, b) => b - a);
+
+  const found: CapturedRecording[] = [];
+  for (const height of heights) {
+    const url = `${base}play_${height}p.mp4`;
+    const head = await fetch(url, { method: 'HEAD' }).catch(() => null);
+    if (head?.ok) {
+      found.push({
+        url,
+        label: 'recording',
+        resolution: `${height}p`,
+        timestamp: Date.now(),
+      });
+    }
+  }
+  return found;
+}
+
+const bunnyInFlight = new Set<string>();
+
+async function captureBunnyRecordings(tabId: number, base: string) {
+  const key = `${tabId}:${base}`;
+  if (bunnyInFlight.has(key)) return;
+  bunnyInFlight.add(key);
+  try {
+    const found = await fetchBunnyRecordings(base);
+    const existing = capturedRecordings.get(tabId) || [];
+    for (const recording of found) {
+      if (!existing.some((r) => r.url === recording.url)) existing.push(recording);
+    }
+    capturedRecordings.set(tabId, existing);
+    updateBadge(tabId);
+  } catch (err) {
+    console.error('[Zoom DL] Failed to read Bunny playlist:', err);
+  } finally {
+    bunnyInFlight.delete(key);
+  }
+}
+
 function extractLabel(url: string): string {
   try {
     const parsed = new URL(url);
@@ -210,13 +279,22 @@ export default defineBackground(() => {
     { urls: ['*://ssrweb.zoom.us/*'] }
   );
 
+  browser.webRequest.onBeforeRequest.addListener(
+    (details) => {
+      if (details.tabId < 0) return;
+      const base = getBunnyBase(details.url);
+      if (base) captureBunnyRecordings(details.tabId, base);
+    },
+    { urls: ['*://*.b-cdn.net/*/playlist.m3u8*'] }
+  );
+
   // 2. Clean up on tab close/navigate
   browser.tabs.onRemoved.addListener((tabId) => {
     capturedRecordings.delete(tabId);
   });
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.url && !changeInfo.url.includes('.zoom.us/rec/')) {
+    if (changeInfo.url && !isSupportedPageUrl(changeInfo.url)) {
       capturedRecordings.delete(tabId);
       updateBadge(tabId);
     }

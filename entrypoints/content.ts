@@ -16,7 +16,11 @@ let lastPct = 0;
 let isCollapsed = false;
 
 export default defineContentScript({
-  matches: ['*://*.zoom.us/rec/play/*', '*://*.zoom.us/rec/share/*'],
+  matches: [
+    '*://*.zoom.us/rec/play/*',
+    '*://*.zoom.us/rec/share/*',
+    '*://*.techspert.co.il/lp/*',
+  ],
 
   main() {
     console.log('[Zoom DL] Content script loaded on recording page');
@@ -584,14 +588,15 @@ function renderRecordingList() {
 
 function getMeetingName(): string {
   const title = document.title || '';
-  return title.replace(/\s*[-–]\s*Zoom.*$/i, '').trim() || 'Zoom_Recording';
+  return title.replace(/\s*[-–]\s*Zoom.*$/i, '').trim() || 'Recording';
 }
 
 function triggerDownload(recording: CapturedRecording) {
   updateWidget('downloading', 'Preparing download...');
 
   const meetingName = getMeetingName();
-  const suffix = recordings.length > 1 ? `_${recording.label}` : '';
+  const variant = recording.resolution && recording.label === 'recording' ? recording.resolution : recording.label;
+  const suffix = recordings.length > 1 ? `_${variant}` : '';
   const filename = `${meetingName}${suffix}`;
 
   console.log('[Zoom DL] Requesting download:', filename);
@@ -640,7 +645,7 @@ function listenForMessages() {
 
 function startPolling() {
   const POLL_INTERVAL = 2000;
-  const MAX_POLL_TIME = 60000;
+  const MAX_POLL_TIME = 600000;
   const startTime = Date.now();
 
   const poll = async () => {
