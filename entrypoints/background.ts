@@ -149,6 +149,43 @@ function sanitizeFilename(name: string): string {
 let offscreenReady = false;
 const REFERER_RULE_ID = 1;
 
+const BUNNY_RULE_ID = 2;
+const BUNNY_EMBED_ORIGIN = 'https://iframe.mediadelivery.net';
+
+async function setBunnyRefererRule() {
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [BUNNY_RULE_ID],
+    addRules: [
+      {
+        id: BUNNY_RULE_ID,
+        priority: 1,
+        action: {
+          type: chrome.declarativeNetRequest.RuleActionType.MODIFY_HEADERS,
+          requestHeaders: [
+            {
+              header: 'Referer',
+              operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+              value: BUNNY_EMBED_ORIGIN + '/',
+            },
+            {
+              header: 'Origin',
+              operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+              value: BUNNY_EMBED_ORIGIN,
+            },
+          ],
+        },
+        condition: {
+          urlFilter: '*://*.b-cdn.net/*',
+          resourceTypes: [
+            chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
+            chrome.declarativeNetRequest.ResourceType.OTHER,
+          ],
+        },
+      },
+    ],
+  });
+}
+
 async function setRefererRule(referer: string) {
   // Remove any existing rule first
   await chrome.declarativeNetRequest.updateDynamicRules({
@@ -247,6 +284,7 @@ async function sendToOffscreen(message: any): Promise<void> {
 
 export default defineBackground(() => {
   console.log('[Zoom DL] Background script started');
+  setBunnyRefererRule().catch((err) => console.error('[Zoom DL] Bunny referer rule failed:', err));
 
   // 1. Detect .mp4 requests to ssrweb.zoom.us
   browser.webRequest.onBeforeRequest.addListener(
